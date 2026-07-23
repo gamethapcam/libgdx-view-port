@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+  <title>MyDemoLibgdx</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta id="gameViewport" name="viewport" content="width=device-width initial-scale=1">
+  <link href="styles.css" rel="stylesheet" type="text/css">
+</head>
+
+<body>
+
+<div align="center" id="embed-html"></div>
+<script type="text/javascript" src="html/html.nocache.js"></script>
+</body>
+
+<script>
+// WebSocket client to forward ball positions to server at ws://localhost:8081
+(function() {
+  var socket = null;
+  var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.hostname + ':8081';
+
+  // generate a client UUID and expose a global function GWT can call
+  function uuidv4() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  // persist per-tab clientId using sessionStorage (unique per browser tab)
+  try {
+    var stored = null;
+    if (window.sessionStorage) stored = sessionStorage.getItem('clientId');
+    if (!stored) {
+      stored = uuidv4();
+      try { sessionStorage.setItem('clientId', stored); } catch (e) { /* ignore */ }
+    }
+    window.clientId = stored;
+    console.log('clientId (tab):', window.clientId);
+  } catch (e) {
+    if (!window.clientId) window.clientId = uuidv4();
+  }
+
+  window.sendBallPosition = function(x, y) {
+    try {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({clientId: window.clientId, x: x, y: y, t: Date.now()}));
+      } else {
+        console.warn('sendBallPosition: socket not open yet', socket && socket.readyState);
+      }
+    } catch (e) {
+      console.warn('sendBallPosition error', e);
+    }
+  };
+
+  function connect() {
+    try {
+      socket = new WebSocket(url);
+      socket.onopen = function() {
+        console.log('Position WS connected', url);
+        try {
+          socket.send(JSON.stringify({ type: 'join', clientId: window.clientId, t: Date.now() }));
+        } catch (e) {
+          console.warn('join send failed', e);
+        }
+      };
+      socket.onclose = function() {
+        console.log('Position WS disconnected, retrying in 1s');
+        socket = null;
+        setTimeout(connect, 1000);
+      };
+      socket.onerror = function(e) {
+        console.warn('Position WS error', e);
+      };
+      socket.onmessage = function(evt) {
+        try {
+          if (window.receiveBalls) {
+            window.receiveBalls(evt.data);
+          } else {
+            console.log('ws msg', evt.data);
+          }
+        } catch (e) {
+          console.warn('ws onmessage error', e);
+        }
+      };
+    } catch (e) {
+      console.warn('WS connect failed', e);
+      setTimeout(connect, 1000);
+    }
+  }
+  connect();
+})();
+
+function handleMouseDown(evt) {
+  evt.preventDefault();
+  evt.stopPropagation();
+  window.focus();
+}
+
+function handleMouseUp(evt) {
+  evt.preventDefault();
+  evt.stopPropagation();
+}
+document.addEventListener('contextmenu', event => event.preventDefault());
+document.getElementById('embed-html').addEventListener('mousedown', handleMouseDown, false);
+document.getElementById('embed-html').addEventListener('mouseup', handleMouseUp, false);
+</script>
+</html>
